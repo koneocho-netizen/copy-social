@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<title>COPY SOCIAL</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#f8fafc;background:#0b1220}
+*{box-sizing:border-box}body{margin:0;padding:20px;max-width:720px;margin:auto}
+header{text-align:center;padding:18px 0 22px}h1{margin:0;font-size:30px;letter-spacing:2px}
+header p{color:#aab6ca;margin:6px 0}.panel{background:#172235;border:1px solid #29384f;border-radius:18px;padding:16px;margin:14px 0}
+button,.filelabel{border:0;border-radius:12px;padding:13px 16px;font-weight:700;background:#2563eb;color:white;cursor:pointer}
+button.secondary{background:#334155}button:disabled{opacity:.5}
+.filelabel{display:block;text-align:center;margin-top:12px}
+input[type=file]{display:none}textarea{width:100%;min-height:220px;background:#0b1220;color:#f8fafc;border:1px solid #394a63;border-radius:12px;padding:13px;font:15px/1.5 system-ui;resize:vertical}
+#preview{max-width:100%;max-height:280px;display:block;margin:12px auto;border-radius:10px}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row button{flex:1}
+small,.muted{color:#aab6ca}#status{min-height:22px;color:#bfdbfe}
+.saved{padding:10px;border-top:1px solid #334155;white-space:pre-wrap;overflow-wrap:anywhere}
+.saved button{padding:7px 10px;margin:6px 4px 0 0;font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>COPY SOCIAL</h1><p>Extrae, edita y copia texto de tus publicaciones</p></header>
+<section class="panel">
+<strong>1. Selecciona una captura o imagen</strong>
+<label class="filelabel" for="imageFile">Elegir imagen</label>
+<input id="imageFile" type="file" accept="image/*">
+<img id="preview" alt="Vista previa" hidden>
+<p id="status" role="status">También puedes usar Compartir en Facebook o TikTok y elegir COPY SOCIAL, si la publicación permite compartir una imagen.</p>
+<button id="recognize" style="width:100%" disabled>Reconocer texto</button>
+<small>El reconocimiento puede cometer errores si la imagen está borrosa o el texto está cortado.</small>
+</section>
+<section class="panel">
+<strong>2. Texto reconocido</strong>
+<p class="muted">Puedes corregirlo antes de copiarlo o guardarlo.</p>
+<textarea id="result" placeholder="El texto aparecerá aquí..."></textarea>
+<div class="row" style="margin-top:10px">
+<button id="copy">Copiar texto</button>
+<button class="secondary" id="save">Guardar</button>
+</div>
+</section>
+<section class="panel">
+<strong>Publicaciones guardadas</strong>
+<div id="savedList" class="muted">Todavía no hay textos guardados.</div>
+</section>
+<p class="muted"><small>Uso personal. Respeta los derechos de autor y la privacidad de quienes publican. COPY SOCIAL no accede a tus cuentas ni elimina restricciones de las plataformas.</small></p>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let selected=null;
+$('imageFile').addEventListener('change',e=>{
+ selected=e.target.files?.[0]||null;
+ if(!selected)return;
+ $('preview').src=URL.createObjectURL(selected);$('preview').hidden=false;
+ $('recognize').disabled=false;$('status').textContent='Imagen lista para analizar.';
+});
+$('recognize').addEventListener('click',async()=>{
+ if(!selected||!window.Tesseract){$('status').textContent='No se pudo cargar el motor OCR. Comprueba tu conexión.';return}
+ $('recognize').disabled=true;$('status').textContent='Reconociendo texto...';
+ try{
+  const worker=await Tesseract.createWorker('spa+eng');
+  const {data}=await worker.recognize(selected);
+  $('result').value=(data.text||'').trim();
+  await worker.terminate();
+  $('status').textContent=$('result').value?'Reconocimiento terminado. Revisa el resultado.':'No se detectó texto legible.';
+ }catch(err){$('status').textContent='Error al reconocer la imagen. Inténtalo con otra captura.'}
+ $('recognize').disabled=false;
+});
+$('copy').onclick=async()=>{
+ const t=$('result').value;
+ if(!t.trim()){$('status').textContent='Primero extrae o escribe algún texto.';return}
+ try{await navigator.clipboard.writeText(t);$('status').textContent='Texto copiado al portapapeles.'}
+ catch(e){$('result').select();$('status').textContent='Selecciona el texto y usa Copiar.'}
+};
+function getSaved(){try{return JSON.parse(localStorage.getItem('copySocialSaved')||'[]')}catch{return []}}
+function renderSaved(){
+ const items=getSaved();$('savedList').innerHTML='';
+ if(!items.length){$('savedList').textContent='Todavía no hay textos guardados.';return}
+ items.forEach((item,i)=>{
+  const div=document.createElement('div');div.className='saved';
+  const p=document.createElement('div');p.textContent=item;
+  const load=document.createElement('button');load.className='secondary';load.textContent='Abrir';load.onclick=()=>$('result').value=item;
+  const del=document.createElement('button');del.className='secondary';del.textContent='Eliminar';del.onclick=()=>{const a=getSaved();a.splice(i,1);localStorage.setItem('copySocialSaved',JSON.stringify(a));renderSaved()};
+  div.append(p,load,del);$('savedList').append(div);
+ });
+}
+$('save').onclick=()=>{
+ const t=$('result').value.trim();if(!t)return;
+ const a=getSaved();a.unshift(t);localStorage.setItem('copySocialSaved',JSON.stringify(a.slice(0,100)));renderSaved();
+ $('status').textContent='Texto guardado en este dispositivo.';
+};
+renderSaved();
+
+function takeShared(){
+ return new Promise((resolve)=>{
+  const req=indexedDB.open("copy-social-inbox",1);
+  req.onupgradeneeded=()=>req.result.createObjectStore("shared");
+  req.onerror=()=>resolve(null);
+  req.onsuccess=()=>{
+   const db=req.result;
+   if(!db.objectStoreNames.contains("shared")){db.close();resolve(null);return}
+   const tx=db.transaction("shared","readwrite"),store=tx.objectStore("shared");
+   const get=store.get("latest");
+   let value=null;
+   get.onsuccess=()=>{value=get.result||null;if(value)store.delete("latest")};
+   tx.oncomplete=()=>{db.close();resolve(value)};
+   tx.onerror=()=>{db.close();resolve(null)};
+  };
+ });
+}
+(async()=>{
+ const params=new URLSearchParams(location.search);
+ if(params.has("share_error"))$('status').textContent="No se pudo recibir el contenido compartido. Prueba compartiendo una captura.";
+ if(params.has("shared")){
+  const data=await takeShared();
+  if(data){
+   const parts=[data.title,data.text,data.url].filter(Boolean);
+   if(data.image){
+    selected=data.image;
+    $('preview').src=URL.createObjectURL(data.image);
+    $('preview').hidden=false;
+    $('recognize').disabled=false;
+    $('status').textContent="Imagen recibida desde Compartir. Pulsa Reconocer texto.";
+   }else if(parts.length){
+    $('result').value=parts.join("\n");
+    $('status').textContent="Texto recibido desde Compartir. Ya puedes copiarlo.";
+   }else $('status').textContent="Se recibió contenido, pero no incluía texto ni una imagen compatible.";
+  }
+  history.replaceState({}, "", location.pathname);
+ }
+})();
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+</script>
+</body></html>

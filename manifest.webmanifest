@@ -1,0 +1,23 @@
+{
+  "name": "COPY SOCIAL",
+  "short_name": "COPY SOCIAL",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#111827",
+  "description": "Extrae y copia texto de capturas de redes sociales.",
+  "share_target": {
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        { "name": "images", "accept": ["image/*"] }
+      ]
+    }
+  }
+}
